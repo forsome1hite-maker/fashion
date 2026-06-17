@@ -1,7 +1,12 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import {
+  getLocalVersions,
+  addLocalVersion,
+  mergeBySequence,
+} from '@/lib/localVersions';
 import {
   Flame,
   Eye,
@@ -355,6 +360,42 @@ function FeedCard({ feed }: { feed: Feed }) {
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  /* 마운트 시 저장소(API + localStorage)에서 변천사를 불러와 동기화
+     → 새로고침/페이지 이동 후에도 추가한 코디가 유지됨 */
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(`/api/posts/${feed.id}/images`);
+        const data = await res.json();
+        let imgs = (data?.images ?? []) as Array<{
+          sequence: number;
+          imageUrl: string;
+          label: string;
+          bgRemoved: boolean;
+        }>;
+        // Mock 모드면 브라우저에 보관된 추가 버전과 병합
+        if (data?.source === 'mock') {
+          imgs = mergeBySequence(imgs as any, getLocalVersions(String(feed.id)));
+        }
+        if (!alive || imgs.length === 0) return;
+        const mapped: PostImage[] = imgs.map((v) => ({
+          sequence: v.sequence,
+          image: v.imageUrl,
+          label: v.label,
+          bgRemoved: v.bgRemoved,
+        }));
+        setVersions(mapped);
+        setActiveSeq(mapped[mapped.length - 1].sequence);
+      } catch {
+        /* 실패 시 시드(feed.versions) 유지 */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [feed.id]);
+
   const active =
     versions.find((v) => v.sequence === activeSeq) ?? versions[versions.length - 1];
   const activeIndex = versions.findIndex((v) => v.sequence === active.sequence);
@@ -373,12 +414,30 @@ function FeedCard({ feed }: { feed: Feed }) {
       });
       const data = await res.json();
       if (data?.image) {
+        // 현재 화면 기준으로 다음 sequence 계산 (새로고침 후에도 일관)
+        const nextSeq =
+          (versions.length ? versions[versions.length - 1].sequence : 0) + 1;
+        const label = nextSeq === 1 ? '원본' : `ver.${nextSeq}`;
+
         const img: PostImage = {
-          sequence: data.image.sequence,
+          sequence: nextSeq,
           image: data.image.imageUrl,
-          label: data.image.label,
+          label,
           bgRemoved: data.image.bgRemoved,
         };
+
+        // Mock 모드면 localStorage 에 영속화 (새로고침/이동에도 유지)
+        if (data.source === 'mock') {
+          addLocalVersion(String(feed.id), {
+            id: `${feed.id}-${nextSeq}`,
+            postId: String(feed.id),
+            sequence: nextSeq,
+            imageUrl: data.image.imageUrl,
+            label,
+            bgRemoved: data.image.bgRemoved,
+          });
+        }
+
         setVersions((prev) => [...prev, img]);
         setActiveSeq(img.sequence);
       }

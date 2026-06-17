@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { getLocalVersions, mergeBySequence } from '@/lib/localVersions';
 import {
   ArrowLeft,
   History,
@@ -82,7 +83,12 @@ export default function PostDetailPage({
         const iData = await iRes.json();
         if (!alive) return;
         setPost(pData.post ?? null);
-        const imgs: PostImage[] = (iData.images ?? [])
+        let raw = (iData.images ?? []) as PostImage[];
+        // Mock 모드면 브라우저에 보관된 추가 버전과 병합 (새로고침에도 유지)
+        if (iData?.source === 'mock') {
+          raw = mergeBySequence(raw as any, getLocalVersions(postId)) as any;
+        }
+        const imgs: PostImage[] = raw
           .slice()
           .sort((a: PostImage, b: PostImage) => a.sequence - b.sequence);
         setImages(imgs);
