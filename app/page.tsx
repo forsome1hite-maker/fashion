@@ -109,6 +109,7 @@ const FEEDS: Feed[] = [
     avatar: 'https://i.pravatar.cc/100?img=11',
     versions: [
       { sequence: 1, image: '/pic/cho.png', label: '원본', bgRemoved: true },
+      { sequence: 2, image: '/pic/cho2.png', label: '코칭본', bgRemoved: true },
     ],
     tpo: '🚨 소개팅 D-1',
     category: '소개팅',
@@ -141,6 +142,8 @@ const FEEDS: Feed[] = [
     avatar: 'https://i.pravatar.cc/100?img=32',
     versions: [
       { sequence: 1, image: '/pic/KCM.png', label: '원본', bgRemoved: true },
+      { sequence: 2, image: '/pic/KCM2.png', label: '코칭 1차', bgRemoved: true },
+      { sequence: 3, image: '/pic/KCM3.png', label: '최종본', bgRemoved: true },
     ],
     tpo: '⚠️ 첫출근 긴급',
     category: '첫출근',
@@ -165,6 +168,7 @@ const FEEDS: Feed[] = [
     avatar: 'https://i.pravatar.cc/100?img=45',
     versions: [
       { sequence: 1, image: '/pic/woman1.png', label: '원본', bgRemoved: true },
+      { sequence: 2, image: '/pic/woman2.png', label: '코칭본', bgRemoved: true },
     ],
     tpo: '💍 친구 결혼식 D-3',
     category: '결혼식',

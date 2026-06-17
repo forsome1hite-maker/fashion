@@ -23,24 +23,20 @@ function labelFor(seq: number) {
   return seq === 1 ? '원본' : `ver.${seq}`;
 }
 
-/* 최초 조회 시 원본(seq=1) 시드 1장으로 초기화 */
+/* 최초 조회 시 변천사 시드로 초기화 (원본 + 코칭본들) */
 function ensure(postId: string): MockImage[] {
   if (!store.has(postId)) {
-    const seed = SEED_IMAGES[postId];
+    const seed = SEED_IMAGES[postId] ?? [];
     store.set(
       postId,
-      seed
-        ? [
-            {
-              id: `${postId}-1`,
-              postId,
-              sequence: 1,
-              imageUrl: seed,
-              label: labelFor(1),
-              bgRemoved: true,
-            },
-          ]
-        : []
+      seed.map((s, i) => ({
+        id: `${postId}-${i + 1}`,
+        postId,
+        sequence: i + 1,
+        imageUrl: s.image,
+        label: s.label ?? labelFor(i + 1),
+        bgRemoved: true,
+      }))
     );
   }
   return store.get(postId) as MockImage[];

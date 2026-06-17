@@ -47,9 +47,19 @@ export const MOCK_POSTS: MockPost[] = [
   },
 ];
 
-/* 각 게시글의 최초(원본) 코디 이미지 */
-export const SEED_IMAGES: Record<string, string> = {
-  '1': '/pic/cho.png',
-  '2': '/pic/KCM.png',
-  '3': '/pic/woman1.png',
+/* 각 게시글의 코디 변천사 시드 (sequence = 배열 인덱스 + 1) */
+export const SEED_IMAGES: Record<string, { image: string; label: string }[]> = {
+  '1': [
+    { image: '/pic/cho.png', label: '원본' },
+    { image: '/pic/cho2.png', label: '코칭본' },
+  ],
+  '2': [
+    { image: '/pic/KCM.png', label: '원본' },
+    { image: '/pic/KCM2.png', label: '코칭 1차' },
+    { image: '/pic/KCM3.png', label: '최종본' },
+  ],
+  '3': [
+    { image: '/pic/woman1.png', label: '원본' },
+    { image: '/pic/woman2.png', label: '코칭본' },
+  ],
 };
