@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { removeBackground } from '@/lib/removebg';
-import { nextSequence } from '@/lib/mockStore';
+import { listImages, addImage } from '@/lib/mockStore';
 
 export const runtime = 'nodejs';
 
@@ -60,8 +60,8 @@ export async function GET(
     });
   }
 
-  // Mock 모드: 변천사는 프론트 State 가 관리하므로 빈 배열 반환
-  return NextResponse.json({ images: [], source: 'mock' });
+  // Mock 모드: 인메모리 스토어(원본 시드 포함)에서 반환
+  return NextResponse.json({ images: listImages(postId), source: 'mock' });
 }
 
 /* ================================================================== */
@@ -152,15 +152,11 @@ export async function POST(
     return NextResponse.json({ image: rowToDTO(data), source: 'supabase' });
   }
 
-  // 3) Mock 폴백 (StackBlitz) — 인메모리 sequence 발급 후 그대로 반환
-  const seq = nextSequence(postId);
-  const dto: PostImageDTO = {
-    id: `${postId}-${seq}`,
-    postId,
-    sequence: seq,
+  // 3) Mock 폴백 (StackBlitz) — 인메모리 스토어에 적재 후 반환
+  const img = addImage(postId, {
     imageUrl: processed.imageUrl,
-    label: label ?? labelFor(seq),
     bgRemoved: processed.bgRemoved,
-  };
-  return NextResponse.json({ image: dto, source: 'mock' });
+    label,
+  });
+  return NextResponse.json({ image: img, source: 'mock' });
 }

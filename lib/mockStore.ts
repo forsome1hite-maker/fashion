@@ -1,15 +1,115 @@
-/**
- * DB 연결 전(StackBlitz/로컬) sequence 발급용 인메모리 저장소.
- * 각 게시글은 최초 1장(원본, sequence=1)을 갖고 시작한다고 가정하고,
- * 새 코디가 추가될 때마다 sequence 를 1씩 증가시켜 반환한다.
- *
- * (개발 서버 모듈 스코프에 유지되므로 새로고침/재시작 시 초기화됨)
- */
-const sequences = new Map<string, number>();
+import { SEED_IMAGES } from './mockData';
 
-export function nextSequence(postId: string): number {
-  const current = sequences.get(postId) ?? 1; // 원본(1)이 이미 있다고 가정
-  const next = current + 1;
-  sequences.set(postId, next);
-  return next;
+/**
+ * DB 연결 전(StackBlitz/로컬) 코디 변천사 인메모리 저장소.
+ * 각 게시글은 최초 1장(원본, sequence=1)을 시드로 갖고 시작하며,
+ * 새 코디가 추가될 때마다 sequence 를 1씩 증가시켜 적재한다.
+ *
+ * (개발 서버 모듈 스코프에 유지 → 서버 재시작 시 초기화됨)
+ */
+
+export type MockImage = {
+  id: string;
+  postId: string;
+  sequence: number;
+  imageUrl: string;
+  label: string;
+  bgRemoved: boolean;
+};
+
+const store = new Map<string, MockImage[]>();
+
+function labelFor(seq: number) {
+  return seq === 1 ? '원본' : `ver.${seq}`;
+}
+
+/* 최초 조회 시 원본(seq=1) 시드 1장으로 초기화 */
+function ensure(postId: string): MockImage[] {
+  if (!store.has(postId)) {
+    const seed = SEED_IMAGES[postId];
+    store.set(
+      postId,
+      seed
+        ? [
+            {
+              id: `${postId}-1`,
+              postId,
+              sequence: 1,
+              imageUrl: seed,
+              label: labelFor(1),
+              bgRemoved: true,
+            },
+          ]
+        : []
+    );
+  }
+  return store.get(postId) as MockImage[];
+}
+
+export function listImages(postId: string): MockImage[] {
+  return ensure(postId);
+}
+
+export function addImage(
+  postId: string,
+  rec: { imageUrl: string; bgRemoved: boolean; label?: string }
+): MockImage {
+  const list = ensure(postId);
+  const seq = (list.length ? list[list.length - 1].sequence : 0) + 1;
+  const img: MockImage = {
+    id: `${postId}-${seq}`,
+    postId,
+    sequence: seq,
+    imageUrl: rec.imageUrl,
+    label: rec.label ?? labelFor(seq),
+    bgRemoved: rec.bgRemoved,
+  };
+  list.push(img);
+  return img;
+}
+
+/* ------------------------------------------------------------------ */
+/* 훈수(댓글) 인메모리 저장소                                            */
+/* ------------------------------------------------------------------ */
+
+export type MockComment = {
+  id: string;
+  postId: string;
+  targetSequence: number | null; // 어떤 코디 버전에 대한 피드백인지
+  author: string;
+  text: string;
+  product: any | null;
+  likes: number;
+};
+
+const commentStore = new Map<string, MockComment[]>();
+let commentCounter = 0;
+
+export function listComments(postId: string): MockComment[] {
+  return commentStore.get(postId) ?? [];
+}
+
+export function addComment(
+  postId: string,
+  rec: {
+    targetSequence: number | null;
+    author: string;
+    text: string;
+    product?: any;
+  }
+): MockComment {
+  const list = commentStore.get(postId) ?? [];
+  commentCounter += 1;
+  const comment: MockComment = {
+    id: `${postId}-c${commentCounter}`,
+    postId,
+    targetSequence: rec.targetSequence ?? null,
+    author: rec.author,
+    text: rec.text,
+    product: rec.product ?? null,
+    likes: 0,
+  };
+  list.push(comment);
+  commentStore.set(postId, list);
+  return comment;
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import Link from 'next/link';
 import {
   Flame,
   Eye,
@@ -23,6 +24,7 @@ import {
   Tag,
   History,
   Plus,
+  Pin,
 } from 'lucide-react';
 
 /* 파일 → data URL 변환 (업로드용) */
@@ -49,12 +51,13 @@ type Product = {
 };
 
 type Comment = {
-  id: number;
+  id: string | number;
   user: string;
   text: string;
   likes: number;
   liked: boolean;
   product?: Product; // 첨부된 추천 상품
+  targetSequence?: number | null; // 어떤 코디 버전에 대한 피드백인지 (null/undefined = 전체)
 };
 
 /* 코디 변천사 한 장 (post_images 1행에 대응) */
@@ -122,6 +125,7 @@ const FEEDS: Feed[] = [
         text: '구두는 합격. 근데 벨트랑 색 맞추면 점수 +10점!',
         likes: 11,
         liked: false,
+        targetSequence: 1,
       },
     ],
   },
@@ -340,6 +344,8 @@ function FeedCard({ feed }: { feed: Feed }) {
   const [open, setOpen] = useState(false); // 댓글 패널 열림 여부
   const [modalOpen, setModalOpen] = useState(false); // 상품 검색 모달
   const [attached, setAttached] = useState<Product | null>(null); // 첨부된 상품
+  const [targetSeq, setTargetSeq] = useState<number | null>(null); // 피드백 대상 버전 (null = 전체)
+  const [sending, setSending] = useState(false); // 댓글 전송 중
 
   /* 패션 변천사 (코디 버전들) */
   const [versions, setVersions] = useState<PostImage[]>(feed.versions);
@@ -384,27 +390,61 @@ function FeedCard({ feed }: { feed: Feed }) {
     }
   };
 
-  /* ① 댓글 추가 (첨부 상품 포함) */
-  const addComment = () => {
+  /* ① 댓글 추가 — 백엔드(API)에 버전 분류 정보와 함께 저장 후 반영 */
+  const addComment = async () => {
     const text = input.trim();
-    if (!text && !attached) return;
-    setComments((prev) => [
-      ...prev,
-      {
-        id: prev.length ? prev[prev.length - 1].id + 1 : 1,
-        user: CURRENT_USER.name,
-        text,
-        likes: 0,
-        liked: false,
-        product: attached ?? undefined,
-      },
-    ]);
-    setInput('');
-    setAttached(null);
+    if ((!text && !attached) || sending) return;
+    setSending(true);
+
+    const productForApi = attached
+      ? {
+          id: attached.id,
+          title: attached.title,
+          image: attached.image,
+          price: attached.price,
+          link: attached.link,
+          mall: attached.mall,
+        }
+      : null;
+
+    try {
+      const res = await fetch(`/api/posts/${feed.id}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          author: CURRENT_USER.name,
+          text,
+          product: productForApi,
+          targetSequence: targetSeq, // ← 선택한 코디 버전에 대한 피드백으로 분류
+        }),
+      });
+      const data = await res.json();
+      const saved = data?.comment;
+
+      setComments((prev) => [
+        ...prev,
+        {
+          id: saved?.id ?? `local-${prev.length + 1}`,
+          user: CURRENT_USER.name,
+          text,
+          likes: 0,
+          liked: false,
+          product: attached ?? undefined,
+          targetSequence: saved?.targetSequence ?? targetSeq,
+        },
+      ]);
+      setInput('');
+      setAttached(null);
+      setTargetSeq(null);
+    } catch {
+      /* 네트워크 실패 시 무시 (프로토타입) */
+    } finally {
+      setSending(false);
+    }
   };
 
   /* ② 댓글 좋아요 토글 */
-  const toggleLike = (commentId: number) => {
+  const toggleLike = (commentId: string | number) => {
     setComments((prev) =>
       prev.map((c) =>
         c.id === commentId
@@ -469,6 +509,12 @@ function FeedCard({ feed }: { feed: Feed }) {
           <span className="ml-1 text-[11px] font-medium text-slate-400">
             코칭 받고 갈아입은 기록
           </span>
+          <Link
+            href={`/posts/${feed.id}`}
+            className="ml-auto text-[11px] font-bold text-fuchsia-600 hover:underline"
+          >
+            전체보기 →
+          </Link>
         </div>
 
         <div className="mt-2 flex items-end gap-2 overflow-x-auto pb-1">
@@ -565,6 +611,59 @@ function FeedCard({ feed }: { feed: Feed }) {
       {/* ===== 댓글 패널 ===== */}
       {open && (
         <div className="border-t border-slate-100 bg-slate-50/60 px-5 py-4">
+          {/* 훈수 대상 코디 버전 선택 */}
+          <div className="mb-3 rounded-2xl bg-white p-2.5 ring-1 ring-slate-200">
+            <p className="mb-1.5 flex items-center gap-1 text-[11px] font-bold text-slate-500">
+              <History size={12} className="text-fuchsia-500" />
+              어떤 코디에 훈수 두시나요?
+              {targetSeq != null && (
+                <span className="ml-1 rounded bg-fuchsia-100 px-1.5 py-0.5 text-[10px] font-bold text-fuchsia-600">
+                  버전 {targetSeq} 선택됨
+                </span>
+              )}
+            </p>
+            <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
+              {/* 전체 코디 옵션 */}
+              <button
+                onClick={() => setTargetSeq(null)}
+                className={`shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition ${
+                  targetSeq === null
+                    ? 'bg-slate-800 text-white'
+                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                }`}
+              >
+                전체 코디
+              </button>
+
+              {/* 버전별 썸네일 */}
+              {versions.map((v, i) => (
+                <button
+                  key={v.sequence}
+                  onClick={() => setTargetSeq(v.sequence)}
+                  className="group/vt flex shrink-0 flex-col items-center gap-0.5"
+                  title={`버전 ${v.sequence} (${v.label})에 훈수`}
+                >
+                  <div
+                    className={`relative overflow-hidden rounded-lg ring-2 transition ${
+                      targetSeq === v.sequence
+                        ? 'ring-fuchsia-500'
+                        : 'ring-transparent group-hover/vt:ring-fuchsia-200'
+                    }`}
+                  >
+                    <img
+                      src={v.image}
+                      alt={v.label}
+                      className="h-12 w-10 bg-slate-100 object-cover"
+                    />
+                    <span className="absolute left-0.5 top-0.5 grid h-4 w-4 place-items-center rounded-full bg-black/60 text-[9px] font-black text-white">
+                      {i + 1}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* 댓글 입력창 */}
           <div className="flex items-start gap-2">
             <img
@@ -623,11 +722,15 @@ function FeedCard({ feed }: { feed: Feed }) {
                 </button>
                 <button
                   onClick={addComment}
-                  disabled={!input.trim() && !attached}
+                  disabled={(!input.trim() && !attached) || sending}
                   className="flex shrink-0 items-center gap-1 rounded-xl bg-gradient-to-r from-fuchsia-600 to-rose-500 px-4 py-2 text-sm font-bold text-white shadow transition hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
                 >
-                  <Send size={14} />
-                  훈수 두기
+                  {sending ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Send size={14} />
+                  )}
+                  {targetSeq != null ? `버전 ${targetSeq}에 훈수` : '훈수 두기'}
                 </button>
               </div>
             </div>
@@ -656,11 +759,17 @@ function FeedCard({ feed }: { feed: Feed }) {
 
                   <div className="flex-1">
                     <div className="inline-block max-w-full rounded-2xl rounded-tl-sm bg-white px-3 py-2 shadow-sm ring-1 ring-slate-100">
-                      <p className="text-xs font-bold text-slate-800">
+                      <p className="flex flex-wrap items-center gap-1 text-xs font-bold text-slate-800">
                         {c.user}
                         {isMine && (
-                          <span className="ml-1 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-600">
+                          <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-600">
                             나
+                          </span>
+                        )}
+                        {c.targetSequence != null && (
+                          <span className="flex items-center gap-0.5 rounded-full bg-fuchsia-100 px-1.5 py-0.5 text-[10px] font-bold text-fuchsia-600">
+                            <Pin size={9} />
+                            버전 {c.targetSequence} 피드백
                           </span>
                         )}
                       </p>
