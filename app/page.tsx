@@ -17,11 +17,24 @@ import {
   Heart,
   Send,
   ShoppingBag,
+  X,
+  Loader2,
+  ExternalLink,
+  Tag,
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
 /* 타입                                                                 */
 /* ------------------------------------------------------------------ */
+
+type Product = {
+  id: string;
+  title: string;
+  image: string;
+  price: number;
+  link: string;
+  mall: string;
+};
 
 type Comment = {
   id: number;
@@ -29,6 +42,7 @@ type Comment = {
   text: string;
   likes: number;
   liked: boolean;
+  product?: Product; // 첨부된 추천 상품
 };
 
 type Feed = {
@@ -156,6 +170,141 @@ const URGENCY_STYLE: Record<Feed['urgency'], string> = {
 };
 
 /* ================================================================== */
+/* 상품 검색 모달                                                       */
+/* ================================================================== */
+
+function ProductSearchModal({
+  onClose,
+  onSelect,
+}: {
+  onClose: () => void;
+  onSelect: (p: Product) => void;
+}) {
+  const [query, setQuery] = useState('검정 슬랙스');
+  const [items, setItems] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const [source, setSource] = useState<'mock' | 'naver' | null>(null);
+
+  const search = async () => {
+    const q = query.trim();
+    if (!q) return;
+    setLoading(true);
+    setSearched(true);
+    try {
+      const res = await fetch(`/api/search?query=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      setItems(data.items ?? []);
+      setSource(data.source ?? null);
+    } catch {
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* 헤더 */}
+        <div className="flex items-center justify-between bg-gradient-to-r from-fuchsia-600 to-rose-500 px-5 py-4 text-white">
+          <h3 className="flex items-center gap-2 text-base font-black">
+            <ShoppingBag size={18} /> 추천 상품 검색
+          </h3>
+          <button
+            onClick={onClose}
+            className="grid h-8 w-8 place-items-center rounded-full bg-white/20 transition hover:bg-white/30"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* 검색창 */}
+        <div className="flex gap-2 p-4">
+          <div className="flex flex-1 items-center gap-2 rounded-full bg-slate-100 px-4 py-2 ring-1 ring-transparent focus-within:bg-white focus-within:ring-fuchsia-300">
+            <Search size={16} className="text-slate-400" />
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && search()}
+              placeholder="예) 검정 슬랙스, 니트, 구두..."
+              className="flex-1 bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none"
+            />
+          </div>
+          <button
+            onClick={search}
+            className="shrink-0 rounded-full bg-gradient-to-r from-fuchsia-600 to-rose-500 px-5 py-2 text-sm font-bold text-white shadow transition hover:scale-105 active:scale-95"
+          >
+            검색
+          </button>
+        </div>
+
+        {/* 결과 영역 */}
+        <div className="flex-1 overflow-y-auto px-4 pb-4">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center gap-2 py-16 text-slate-400">
+              <Loader2 size={28} className="animate-spin text-fuchsia-500" />
+              <p className="text-sm">상품을 찾는 중...</p>
+            </div>
+          ) : items.length === 0 ? (
+            <div className="py-16 text-center text-sm text-slate-400">
+              {searched
+                ? '검색 결과가 없어요 🥲 다른 키워드로 시도해보세요.'
+                : '검색어를 입력하고 상품을 찾아보세요!'}
+            </div>
+          ) : (
+            <>
+              {source === 'mock' && (
+                <p className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-[11px] font-medium text-amber-600">
+                  ⚙️ 현재 Mock 데이터로 표시 중 · 네이버 API 키 등록 시 실제 검색
+                  결과로 전환됩니다
+                </p>
+              )}
+              <ul className="space-y-2">
+                {items.map((p) => (
+                  <li
+                    key={p.id}
+                    className="flex items-center gap-3 rounded-2xl p-2 ring-1 ring-slate-100 transition hover:bg-fuchsia-50/60 hover:ring-fuchsia-200"
+                  >
+                    <img
+                      src={p.image}
+                      alt={p.title}
+                      className="h-16 w-16 shrink-0 rounded-xl bg-slate-100 object-cover"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-slate-800">
+                        {p.title}
+                      </p>
+                      <p className="text-xs text-slate-400">{p.mall}</p>
+                      <p className="text-sm font-black text-fuchsia-600">
+                        {p.price.toLocaleString()}원
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => onSelect(p)}
+                      className="shrink-0 rounded-full bg-slate-900 px-3 py-2 text-xs font-bold text-white transition hover:bg-fuchsia-600 active:scale-95"
+                    >
+                      선택
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================== */
 /* 피드 카드 (카드별 댓글 State를 독립적으로 보유)                       */
 /* ================================================================== */
 
@@ -163,11 +312,13 @@ function FeedCard({ feed }: { feed: Feed }) {
   const [comments, setComments] = useState<Comment[]>(feed.comments);
   const [input, setInput] = useState('');
   const [open, setOpen] = useState(false); // 댓글 패널 열림 여부
+  const [modalOpen, setModalOpen] = useState(false); // 상품 검색 모달
+  const [attached, setAttached] = useState<Product | null>(null); // 첨부된 상품
 
-  /* ① 댓글 추가 */
+  /* ① 댓글 추가 (첨부 상품 포함) */
   const addComment = () => {
     const text = input.trim();
-    if (!text) return;
+    if (!text && !attached) return;
     setComments((prev) => [
       ...prev,
       {
@@ -176,9 +327,11 @@ function FeedCard({ feed }: { feed: Feed }) {
         text,
         likes: 0,
         liked: false,
+        product: attached ?? undefined,
       },
     ]);
     setInput('');
+    setAttached(null);
   };
 
   /* ② 댓글 좋아요 토글 */
@@ -273,7 +426,7 @@ function FeedCard({ feed }: { feed: Feed }) {
               alt="나"
               className="h-9 w-9 rounded-full ring-2 ring-violet-200 object-cover"
             />
-            <div className="flex flex-1 items-end gap-2 rounded-2xl bg-white p-2 shadow-sm ring-1 ring-slate-200 focus-within:ring-fuchsia-300">
+            <div className="flex flex-1 flex-col gap-2 rounded-2xl bg-white p-2 shadow-sm ring-1 ring-slate-200 focus-within:ring-fuchsia-300">
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
@@ -283,18 +436,54 @@ function FeedCard({ feed }: { feed: Feed }) {
                     addComment();
                   }
                 }}
-                rows={1}
-                placeholder="따뜻한 팩폭 한마디 남겨주세요... (쇼핑몰 링크 환영 🛍️)"
-                className="max-h-32 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none"
+                rows={2}
+                placeholder="따뜻한 팩폭 한마디 남겨주세요... (추천템은 상품 검색으로 첨부 🛍️)"
+                className="max-h-32 w-full resize-none bg-transparent px-2 py-1.5 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none"
               />
-              <button
-                onClick={addComment}
-                disabled={!input.trim()}
-                className="flex shrink-0 items-center gap-1 rounded-xl bg-gradient-to-r from-fuchsia-600 to-rose-500 px-3 py-2 text-sm font-bold text-white shadow transition hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
-              >
-                <Send size={14} />
-                훈수 두기
-              </button>
+
+              {/* 첨부된 상품 미리보기 */}
+              {attached && (
+                <div className="flex items-center gap-2 rounded-xl bg-fuchsia-50 p-2 ring-1 ring-fuchsia-200">
+                  <img
+                    src={attached.image}
+                    alt={attached.title}
+                    className="h-10 w-10 shrink-0 rounded-lg bg-white object-cover"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-semibold text-slate-700">
+                      {attached.title}
+                    </p>
+                    <p className="text-xs font-black text-fuchsia-600">
+                      {attached.price.toLocaleString()}원
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setAttached(null)}
+                    className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-slate-400 transition hover:bg-white hover:text-rose-500"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+
+              {/* 액션 버튼 줄 */}
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  onClick={() => setModalOpen(true)}
+                  className="flex items-center gap-1 rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-200 active:scale-95"
+                >
+                  <ShoppingBag size={14} />
+                  상품 검색
+                </button>
+                <button
+                  onClick={addComment}
+                  disabled={!input.trim() && !attached}
+                  className="flex shrink-0 items-center gap-1 rounded-xl bg-gradient-to-r from-fuchsia-600 to-rose-500 px-4 py-2 text-sm font-bold text-white shadow transition hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
+                >
+                  <Send size={14} />
+                  훈수 두기
+                </button>
+              </div>
             </div>
           </div>
 
@@ -320,7 +509,7 @@ function FeedCard({ feed }: { feed: Feed }) {
                   </div>
 
                   <div className="flex-1">
-                    <div className="inline-block rounded-2xl rounded-tl-sm bg-white px-3 py-2 shadow-sm ring-1 ring-slate-100">
+                    <div className="inline-block max-w-full rounded-2xl rounded-tl-sm bg-white px-3 py-2 shadow-sm ring-1 ring-slate-100">
                       <p className="text-xs font-bold text-slate-800">
                         {c.user}
                         {isMine && (
@@ -329,7 +518,40 @@ function FeedCard({ feed }: { feed: Feed }) {
                           </span>
                         )}
                       </p>
-                      <p className="mt-0.5 text-sm text-slate-700">{c.text}</p>
+                      {c.text && (
+                        <p className="mt-0.5 text-sm text-slate-700">{c.text}</p>
+                      )}
+
+                      {/* 첨부된 추천 상품 카드 */}
+                      {c.product && (
+                        <a
+                          href={c.product.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-2 flex items-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-50 to-rose-50 p-2 ring-1 ring-fuchsia-200 transition hover:ring-fuchsia-400"
+                        >
+                          <img
+                            src={c.product.image}
+                            alt={c.product.title}
+                            className="h-12 w-12 shrink-0 rounded-lg bg-white object-cover"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="flex items-center gap-1 text-[10px] font-bold text-fuchsia-500">
+                              <Tag size={10} /> 추천 상품
+                            </p>
+                            <p className="truncate text-xs font-semibold text-slate-700">
+                              {c.product.title}
+                            </p>
+                            <p className="text-xs font-black text-fuchsia-600">
+                              {c.product.price.toLocaleString()}원
+                            </p>
+                          </div>
+                          <ExternalLink
+                            size={14}
+                            className="shrink-0 text-slate-400"
+                          />
+                        </a>
+                      )}
                     </div>
 
                     {/* 좋아요(매의 눈 추천) 버튼 */}
@@ -353,6 +575,17 @@ function FeedCard({ feed }: { feed: Feed }) {
             })}
           </ul>
         </div>
+      )}
+
+      {/* 상품 검색 모달 */}
+      {modalOpen && (
+        <ProductSearchModal
+          onClose={() => setModalOpen(false)}
+          onSelect={(p) => {
+            setAttached(p);
+            setModalOpen(false);
+          }}
+        />
       )}
     </article>
   );
