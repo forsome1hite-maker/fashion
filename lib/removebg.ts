@@ -15,8 +15,17 @@ export type RemoveBgResult = {
 export async function removeBackground(image: string): Promise<RemoveBgResult> {
   const apiKey = process.env.REMOVEBG_API_KEY;
 
-  // --- Mock 모드: 키가 없으면 원본을 그대로 반환 ---
+  // --- Mock 모드: 키가 없으면 누끼 처리는 건너뛰되,
+  //     data URL 이면 버퍼로 변환해 Storage 업로드가 가능하도록 한다 ---
   if (!apiKey) {
+    if (image.startsWith('data:')) {
+      const [, b64] = image.split(',');
+      return {
+        imageUrl: image,
+        bgRemoved: false,
+        buffer: Buffer.from(b64, 'base64'),
+      };
+    }
     return { imageUrl: image, bgRemoved: false };
   }
 

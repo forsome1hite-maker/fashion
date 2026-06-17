@@ -74,7 +74,7 @@ type PostImage = {
 };
 
 type Feed = {
-  id: number;
+  id: string;
   user: string;
   handle: string;
   avatar: string;
@@ -98,95 +98,8 @@ const CURRENT_USER = {
 };
 
 /* ------------------------------------------------------------------ */
-/* 더미 데이터                                                          */
+/* 사이드바 랭킹 (정적 데모)                                             */
 /* ------------------------------------------------------------------ */
-
-const FEEDS: Feed[] = [
-  {
-    id: 1,
-    user: '소개팅뉴비',
-    handle: '@blind_date_99',
-    avatar: 'https://i.pravatar.cc/100?img=11',
-    versions: [
-      { sequence: 1, image: '/pic/cho.png', label: '원본', bgRemoved: true },
-      { sequence: 2, image: '/pic/cho2.png', label: '코칭본', bgRemoved: true },
-    ],
-    tpo: '🚨 소개팅 D-1',
-    category: '소개팅',
-    urgency: 'critical',
-    question: '내일 첫 소개팅인데 이 핏 어떤가요? 너무 과한가요...?',
-    advisors: 42,
-    likes: 318,
-    comments: [
-      {
-        id: 1,
-        user: '청담동패션장인',
-        text: '소개팅에 풀정장은 과해요! 셔츠 단추 하나 풀고 니트 하나 걸치면 부담 확 줄어요 🔥',
-        likes: 24,
-        liked: false,
-      },
-      {
-        id: 2,
-        user: '핏의정석',
-        text: '구두는 합격. 근데 벨트랑 색 맞추면 점수 +10점!',
-        likes: 11,
-        liked: false,
-        targetSequence: 1,
-      },
-    ],
-  },
-  {
-    id: 2,
-    user: '월요병환자',
-    handle: '@new_comer',
-    avatar: 'https://i.pravatar.cc/100?img=32',
-    versions: [
-      { sequence: 1, image: '/pic/KCM.png', label: '원본', bgRemoved: true },
-      { sequence: 2, image: '/pic/KCM2.png', label: '코칭 1차', bgRemoved: true },
-      { sequence: 3, image: '/pic/KCM3.png', label: '최종본', bgRemoved: true },
-    ],
-    tpo: '⚠️ 첫출근 긴급',
-    category: '첫출근',
-    urgency: 'warning',
-    question: '스타트업 첫 출근룩이요. 캐주얼인데 너무 풀어진 느낌일까요?',
-    advisors: 27,
-    likes: 204,
-    comments: [
-      {
-        id: 1,
-        user: '무신사털이범',
-        text: '첫날부터 비니는 좀... 깔끔한 셔츠 하나만 걸쳐도 인상 확 달라져요',
-        likes: 18,
-        liked: false,
-      },
-    ],
-  },
-  {
-    id: 3,
-    user: '결혼식하객',
-    handle: '@guest_look',
-    avatar: 'https://i.pravatar.cc/100?img=45',
-    versions: [
-      { sequence: 1, image: '/pic/woman1.png', label: '원본', bgRemoved: true },
-      { sequence: 2, image: '/pic/woman2.png', label: '코칭본', bgRemoved: true },
-    ],
-    tpo: '💍 친구 결혼식 D-3',
-    category: '결혼식',
-    urgency: 'normal',
-    question: '하객룩인데 신부보다 튀면 안 되겠죠? 컬러 톤 봐주세요!',
-    advisors: 15,
-    likes: 142,
-    comments: [
-      {
-        id: 1,
-        user: '컬러닥터',
-        text: '화이트 블라우스는 신부랑 겹쳐요! 베이지나 톤다운 컬러 추천 💄',
-        likes: 31,
-        liked: false,
-      },
-    ],
-  },
-];
 
 const RANKING = [
   { rank: 1, name: '청담동패션장인', point: 9820, badge: '🥇', tier: '레전드 스타일리스트' },
@@ -915,11 +828,30 @@ function FeedCard({ feed }: { feed: Feed }) {
 
 export default function Home() {
   const [filter, setFilter] = useState('전체');
+  const [feeds, setFeeds] = useState<Feed[]>([]);
+  const [loadingFeeds, setLoadingFeeds] = useState(true);
+
+  /* 피드(게시글)를 DB(API)에서 로드 */
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch('/api/posts');
+        const data = await res.json();
+        if (alive) setFeeds((data?.feeds ?? []) as Feed[]);
+      } catch {
+        /* ignore */
+      } finally {
+        if (alive) setLoadingFeeds(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const visibleFeeds =
-    filter === '전체'
-      ? FEEDS
-      : FEEDS.filter((f) => f.category === filter);
+    filter === '전체' ? feeds : feeds.filter((f) => f.category === filter);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-rose-50 via-white to-violet-50 text-slate-900">
@@ -947,6 +879,12 @@ export default function Home() {
 
           {/* 내 등급 / 포인트 */}
           <div className="flex items-center gap-3">
+            <Link
+              href="/new"
+              className="hidden sm:flex items-center gap-1 rounded-full bg-gradient-to-r from-fuchsia-600 to-rose-500 px-3 py-2 text-sm font-bold text-white shadow-lg shadow-fuchsia-500/30 transition hover:scale-105 active:scale-95"
+            >
+              <Plus size={16} /> 착샷 올리기
+            </Link>
             <button className="relative grid h-9 w-9 place-items-center rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 transition">
               <Bell size={18} />
               <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-rose-500 text-[10px] font-bold text-white grid place-items-center">
@@ -1011,12 +949,23 @@ export default function Home() {
           </div>
 
           {/* 피드 카드 목록 */}
-          {visibleFeeds.length === 0 ? (
+          {loadingFeeds ? (
+            <div className="flex flex-col items-center justify-center gap-2 rounded-3xl bg-white py-20 text-slate-400 shadow-lg ring-1 ring-slate-100">
+              <Loader2 size={28} className="animate-spin text-fuchsia-500" />
+              <p className="text-sm">코디를 불러오는 중...</p>
+            </div>
+          ) : visibleFeeds.length === 0 ? (
             <div className="rounded-3xl bg-white py-16 text-center text-slate-400 shadow-lg ring-1 ring-slate-100">
               <p className="text-3xl">🧐</p>
               <p className="mt-2 text-sm font-medium">
                 해당 TPO의 코디가 아직 없어요!
               </p>
+              <Link
+                href="/new"
+                className="mt-4 inline-block rounded-full bg-fuchsia-600 px-4 py-2 text-sm font-bold text-white"
+              >
+                + 내 착샷 올리기
+              </Link>
             </div>
           ) : (
             visibleFeeds.map((feed) => <FeedCard key={feed.id} feed={feed} />)

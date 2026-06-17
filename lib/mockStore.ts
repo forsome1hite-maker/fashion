@@ -1,4 +1,4 @@
-import { SEED_IMAGES } from './mockData';
+import { SEED_IMAGES, MOCK_POSTS, MockPost } from './mockData';
 
 /**
  * DB 연결 전(StackBlitz/로컬) 코디 변천사 인메모리 저장소.
@@ -80,6 +80,24 @@ export type MockComment = {
 
 const commentStore = new Map<string, MockComment[]>();
 let commentCounter = 0;
+
+/* ------------------------------------------------------------------ */
+/* 게시글 인메모리 저장소 (Mock 모드에서 새 글 작성 지원)                 */
+/* ------------------------------------------------------------------ */
+
+const createdPosts: MockPost[] = [];
+let postCounter = 0;
+
+export function listPosts(): MockPost[] {
+  return [...createdPosts, ...MOCK_POSTS]; // 새 글이 위로
+}
+
+export function addPost(p: Omit<MockPost, 'id'>): MockPost {
+  postCounter += 1;
+  const post: MockPost = { id: `new-${postCounter}`, ...p };
+  createdPosts.unshift(post);
+  return post;
+}
 
 export function listComments(postId: string): MockComment[] {
   return commentStore.get(postId) ?? [];
