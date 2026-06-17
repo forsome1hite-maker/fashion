@@ -44,7 +44,8 @@ export default function NewPostPage() {
   );
   const [tpo, setTpo] = useState('');
   const [question, setQuestion] = useState('');
-  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null); // 미리보기용
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -60,31 +61,29 @@ export default function NewPostPage() {
   const onPickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const dataUrl = await fileToDataUrl(file);
-    setImageDataUrl(dataUrl);
+    setImageFile(file);
+    setImageDataUrl(await fileToDataUrl(file)); // 미리보기용 (전송은 File 객체)
     e.target.value = '';
   };
 
   const submit = async () => {
     setError('');
     if (!question.trim()) return setError('질문 내용을 입력해주세요.');
-    if (!imageDataUrl) return setError('코디 사진을 첨부해주세요.');
+    if (!imageFile) return setError('코디 사진을 첨부해주세요.');
 
     setSubmitting(true);
     try {
-      const res = await fetch('/api/posts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          author: author.trim(),
-          handle: author.trim() ? `@${author.trim()}` : '',
-          tpo: tpo.trim() || suggestedTpo(),
-          category,
-          urgency,
-          question: question.trim(),
-          image: imageDataUrl,
-        }),
-      });
+      // 파일 객체를 FormData 로 직접 전송 (Content-Type 헤더는 브라우저가 자동 설정)
+      const fd = new FormData();
+      fd.append('file', imageFile);
+      fd.append('author', author.trim());
+      fd.append('handle', author.trim() ? `@${author.trim()}` : '');
+      fd.append('tpo', tpo.trim() || suggestedTpo());
+      fd.append('category', category);
+      fd.append('urgency', urgency);
+      fd.append('question', question.trim());
+
+      const res = await fetch('/api/posts', { method: 'POST', body: fd });
       const data = await res.json();
       if (data?.postId) {
         router.push(`/posts/${data.postId}`);
@@ -141,7 +140,10 @@ export default function NewPostPage() {
                   className="mx-auto h-80 w-auto max-w-full object-contain py-3"
                 />
                 <button
-                  onClick={() => setImageDataUrl(null)}
+                  onClick={() => {
+                    setImageFile(null);
+                    setImageDataUrl(null);
+                  }}
                   className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full bg-black/60 text-white transition hover:bg-black/80"
                 >
                   <X size={16} />

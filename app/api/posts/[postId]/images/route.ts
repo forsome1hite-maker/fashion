@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { removeBackground } from '@/lib/removebg';
+import { removeBackground, extFor, bufferToDataUrl } from '@/lib/removebg';
 import { listImages, addImage } from '@/lib/mockStore';
 
 export const runtime = 'nodejs';
@@ -76,27 +76,32 @@ export async function POST(
 ) {
   const postId = params.postId;
 
-  let body: any = null;
+  let form: FormData;
   try {
-    body = await req.json();
+    form = await req.formData();
   } catch {
-    /* ignore */
-  }
-
-  const image: string | undefined = body?.image;
-  const label: string | undefined = body?.label;
-
-  if (!image) {
     return NextResponse.json(
-      { error: 'image 필드(데이터 URL 또는 이미지 URL)가 필요합니다.' },
+      { error: 'multipart/form-data 형식으로 전송해주세요.' },
       { status: 400 }
     );
   }
 
-  // 1) 누끼 제거 (Remove.bg) — 이전과 동일한 처리 로직 재호출
+  const label: string | undefined = form.get('label')?.toString() || undefined;
+  const file = form.get('file');
+
+  if (!(file instanceof File) || file.size === 0) {
+    return NextResponse.json(
+      { error: '코디 사진 파일(file)이 필요합니다.' },
+      { status: 400 }
+    );
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  // 1) 누끼 제거 (Remove.bg)
   let processed;
   try {
-    processed = await removeBackground(image);
+    processed = await removeBackground({ buffer, contentType: file.type });
   } catch (e: any) {
     return NextResponse.json(
       { error: `누끼 제거 실패: ${e?.message ?? e}` },
@@ -117,21 +122,19 @@ export async function POST(
 
     const seq = (maxRow?.sequence ?? 0) + 1;
 
-    // 처리된 PNG 를 Storage('coordi' 버킷)에 업로드 후 공개 URL 사용
-    let finalUrl = processed.imageUrl;
-    if (processed.buffer) {
-      const path = `${postId}/${seq}.png`;
-      const up = await supabaseAdmin.storage
-        .from('coordi')
-        .upload(path, processed.buffer, {
-          contentType: 'image/png',
-          upsert: true,
-        });
-      if (!up.error) {
-        finalUrl = supabaseAdmin.storage.from('coordi').getPublicUrl(path).data
-          .publicUrl;
-      }
+    // 처리된 이미지를 Storage('coordi' 버킷)에 업로드 후 공개 URL 사용
+    const path = `${postId}/${seq}.${extFor(processed.contentType)}`;
+    const up = await supabaseAdmin.storage
+      .from('coordi')
+      .upload(path, processed.buffer, {
+        contentType: processed.contentType,
+        upsert: true,
+      });
+    if (up.error) {
+      return NextResponse.json({ error: up.error.message }, { status: 500 });
     }
+    const finalUrl = supabaseAdmin.storage.from('coordi').getPublicUrl(path).data
+      .publicUrl;
 
     const { data, error } = await supabaseAdmin
       .from('post_images')
@@ -139,7 +142,6 @@ export async function POST(
         post_id: postId,
         sequence: seq,
         image_url: finalUrl,
-        original_url: image.startsWith('http') ? image : null,
         label: label ?? labelFor(seq),
         bg_removed: processed.bgRemoved,
       })
@@ -152,9 +154,9 @@ export async function POST(
     return NextResponse.json({ image: rowToDTO(data), source: 'supabase' });
   }
 
-  // 3) Mock 폴백 (StackBlitz) — 인메모리 스토어에 적재 후 반환
+  // 3) Mock 폴백 — 인메모리 스토어에 적재 후 반환
   const img = addImage(postId, {
-    imageUrl: processed.imageUrl,
+    imageUrl: bufferToDataUrl(processed.buffer, processed.contentType),
     bgRemoved: processed.bgRemoved,
     label,
   });

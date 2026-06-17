@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { removeBackground } from '@/lib/removebg';
+import { removeBackground, extFor, bufferToDataUrl } from '@/lib/removebg';
 import {
   listPosts,
   addPost,
@@ -149,39 +149,45 @@ export async function GET() {
 /* ================================================================== */
 
 export async function POST(req: NextRequest) {
-  let body: any = null;
+  let form: FormData;
   try {
-    body = await req.json();
+    form = await req.formData();
   } catch {
-    /* ignore */
+    return NextResponse.json(
+      { error: 'multipart/form-data 형식으로 전송해주세요.' },
+      { status: 400 }
+    );
   }
 
-  const author = (body?.author ?? '').toString().trim() || '익명의 패션테러리스트';
-  const handle = body?.handle ?? '';
-  const avatar = body?.avatar ?? DEFAULT_AVATAR;
-  const tpo = body?.tpo ?? '';
-  const category = body?.category ?? '';
+  const author = (form.get('author')?.toString() ?? '').trim() || '익명의 패션테러리스트';
+  const handle = form.get('handle')?.toString() ?? '';
+  const avatar = form.get('avatar')?.toString() || DEFAULT_AVATAR;
+  const tpo = form.get('tpo')?.toString() ?? '';
+  const category = form.get('category')?.toString() ?? '';
+  const urgencyRaw = form.get('urgency')?.toString() ?? 'normal';
   const urgency: 'critical' | 'warning' | 'normal' = [
     'critical',
     'warning',
     'normal',
-  ].includes(body?.urgency)
-    ? body.urgency
+  ].includes(urgencyRaw)
+    ? (urgencyRaw as any)
     : 'normal';
-  const question = (body?.question ?? '').toString().trim();
-  const image: string | undefined = body?.image;
+  const question = (form.get('question')?.toString() ?? '').trim();
+  const file = form.get('file');
 
   if (!question) {
     return NextResponse.json({ error: '질문 내용을 입력해주세요.' }, { status: 400 });
   }
-  if (!image) {
+  if (!(file instanceof File) || file.size === 0) {
     return NextResponse.json({ error: '코디 사진을 첨부해주세요.' }, { status: 400 });
   }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
 
   // 누끼 제거 (키 없으면 통과)
   let processed;
   try {
-    processed = await removeBackground(image);
+    processed = await removeBackground({ buffer, contentType: file.type });
   } catch (e: any) {
     return NextResponse.json(
       { error: `누끼 제거 실패: ${e?.message ?? e}` },
@@ -193,15 +199,7 @@ export async function POST(req: NextRequest) {
     // 1) 게시글 insert
     const { data: post, error: pErr } = await supabaseAdmin
       .from('posts')
-      .insert({
-        author_name: author,
-        handle,
-        avatar,
-        tpo,
-        category,
-        urgency,
-        question,
-      })
+      .insert({ author_name: author, handle, avatar, tpo, category, urgency, question })
       .select()
       .single();
 
@@ -212,27 +210,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2) 첫 이미지 저장 (Storage 업로드 후 공개 URL)
-    let finalUrl = processed.imageUrl;
-    if (processed.buffer) {
-      const path = `${post.id}/1.png`;
-      const up = await supabaseAdmin.storage
-        .from('coordi')
-        .upload(path, processed.buffer, {
-          contentType: 'image/png',
-          upsert: true,
-        });
-      if (!up.error) {
-        finalUrl = supabaseAdmin.storage.from('coordi').getPublicUrl(path).data
-          .publicUrl;
-      }
+    // 2) 첫 이미지 Storage 업로드 후 공개 URL
+    const path = `${post.id}/1.${extFor(processed.contentType)}`;
+    const up = await supabaseAdmin.storage
+      .from('coordi')
+      .upload(path, processed.buffer, {
+        contentType: processed.contentType,
+        upsert: true,
+      });
+    if (up.error) {
+      return NextResponse.json({ error: up.error.message }, { status: 500 });
     }
+    const finalUrl = supabaseAdmin.storage.from('coordi').getPublicUrl(path).data
+      .publicUrl;
 
     const { error: iErr } = await supabaseAdmin.from('post_images').insert({
       post_id: post.id,
       sequence: 1,
       image_url: finalUrl,
-      original_url: image.startsWith('http') ? image : null,
       label: '원본',
       bg_removed: processed.bgRemoved,
     });
@@ -247,7 +242,7 @@ export async function POST(req: NextRequest) {
   // Mock 폴백
   const post = addPost({ user: author, handle, avatar, tpo, category, urgency, question });
   addImage(post.id, {
-    imageUrl: processed.imageUrl,
+    imageUrl: bufferToDataUrl(processed.buffer, processed.contentType),
     bgRemoved: processed.bgRemoved,
     label: '원본',
   });

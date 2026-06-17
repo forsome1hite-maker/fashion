@@ -32,16 +32,6 @@ import {
   Pin,
 } from 'lucide-react';
 
-/* 파일 → data URL 변환 (업로드용) */
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 /* ------------------------------------------------------------------ */
 /* 타입                                                                 */
 /* ------------------------------------------------------------------ */
@@ -323,35 +313,31 @@ function FeedCard({ feed }: { feed: Feed }) {
     if (!file) return;
     setUploading(true);
     try {
-      const dataUrl = await fileToDataUrl(file);
+      // 파일 객체를 FormData 로 직접 전송 (Content-Type 은 브라우저가 자동 설정)
+      const fd = new FormData();
+      fd.append('file', file);
       const res = await fetch(`/api/posts/${feed.id}/images`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: dataUrl }),
+        body: fd,
       });
       const data = await res.json();
       if (data?.image) {
-        // 현재 화면 기준으로 다음 sequence 계산 (새로고침 후에도 일관)
-        const nextSeq =
-          (versions.length ? versions[versions.length - 1].sequence : 0) + 1;
-        const label = nextSeq === 1 ? '원본' : `ver.${nextSeq}`;
-
         const img: PostImage = {
-          sequence: nextSeq,
+          sequence: data.image.sequence,
           image: data.image.imageUrl,
-          label,
+          label: data.image.label,
           bgRemoved: data.image.bgRemoved,
         };
 
         // Mock 모드면 localStorage 에 영속화 (새로고침/이동에도 유지)
         if (data.source === 'mock') {
           addLocalVersion(String(feed.id), {
-            id: `${feed.id}-${nextSeq}`,
+            id: `${feed.id}-${img.sequence}`,
             postId: String(feed.id),
-            sequence: nextSeq,
-            imageUrl: data.image.imageUrl,
-            label,
-            bgRemoved: data.image.bgRemoved,
+            sequence: img.sequence,
+            imageUrl: img.image,
+            label: img.label,
+            bgRemoved: img.bgRemoved,
           });
         }
 
