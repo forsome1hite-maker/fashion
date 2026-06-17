@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import {
   Flame,
   Eye,
@@ -14,11 +15,21 @@ import {
   Search,
   Bell,
   Heart,
+  Send,
+  ShoppingBag,
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
-/* 더미 데이터                                                          */
+/* 타입                                                                 */
 /* ------------------------------------------------------------------ */
+
+type Comment = {
+  id: number;
+  user: string;
+  text: string;
+  likes: number;
+  liked: boolean;
+};
 
 type Feed = {
   id: number;
@@ -27,11 +38,26 @@ type Feed = {
   avatar: string;
   outfit: string;
   tpo: string;
+  category: string; // 필터용 (소개팅/첫출근/결혼식)
   urgency: 'critical' | 'warning' | 'normal';
   question: string;
   advisors: number;
   likes: number;
+  comments: Comment[];
 };
+
+/* ------------------------------------------------------------------ */
+/* 현재 로그인한 유저 (DB 연결 전 더미)                                  */
+/* ------------------------------------------------------------------ */
+
+const CURRENT_USER = {
+  name: '압구정 매의 눈',
+  avatar: 'https://i.pravatar.cc/100?img=58',
+};
+
+/* ------------------------------------------------------------------ */
+/* 더미 데이터                                                          */
+/* ------------------------------------------------------------------ */
 
 const FEEDS: Feed[] = [
   {
@@ -39,39 +65,73 @@ const FEEDS: Feed[] = [
     user: '소개팅뉴비',
     handle: '@blind_date_99',
     avatar: 'https://i.pravatar.cc/100?img=11',
-    outfit:
-      'https://images.unsplash.com/photo-1490578474895-699cd4e2cf59?w=600&q=80',
+    outfit: '/pic/cho.png',
     tpo: '🚨 소개팅 D-1',
+    category: '소개팅',
     urgency: 'critical',
     question: '내일 첫 소개팅인데 이 핏 어떤가요? 너무 과한가요...?',
     advisors: 42,
     likes: 318,
+    comments: [
+      {
+        id: 1,
+        user: '청담동패션장인',
+        text: '소개팅에 풀정장은 과해요! 셔츠 단추 하나 풀고 니트 하나 걸치면 부담 확 줄어요 🔥',
+        likes: 24,
+        liked: false,
+      },
+      {
+        id: 2,
+        user: '핏의정석',
+        text: '구두는 합격. 근데 벨트랑 색 맞추면 점수 +10점!',
+        likes: 11,
+        liked: false,
+      },
+    ],
   },
   {
     id: 2,
     user: '월요병환자',
     handle: '@new_comer',
     avatar: 'https://i.pravatar.cc/100?img=32',
-    outfit:
-      'https://images.unsplash.com/photo-1487222477894-8943e31ef7b2?w=600&q=80',
+    outfit: '/pic/KCM.png',
     tpo: '⚠️ 첫출근 긴급',
+    category: '첫출근',
     urgency: 'warning',
     question: '스타트업 첫 출근룩이요. 캐주얼인데 너무 풀어진 느낌일까요?',
     advisors: 27,
     likes: 204,
+    comments: [
+      {
+        id: 1,
+        user: '무신사털이범',
+        text: '첫날부터 비니는 좀... 깔끔한 셔츠 하나만 걸쳐도 인상 확 달라져요',
+        likes: 18,
+        liked: false,
+      },
+    ],
   },
   {
     id: 3,
     user: '결혼식하객',
     handle: '@guest_look',
     avatar: 'https://i.pravatar.cc/100?img=45',
-    outfit:
-      'https://images.unsplash.com/photo-1496747611176-843222e1e57c?w=600&q=80',
+    outfit: '/pic/woman1.png',
     tpo: '💍 친구 결혼식 D-3',
+    category: '결혼식',
     urgency: 'normal',
     question: '하객룩인데 신부보다 튀면 안 되겠죠? 컬러 톤 봐주세요!',
     advisors: 15,
     likes: 142,
+    comments: [
+      {
+        id: 1,
+        user: '컬러닥터',
+        text: '화이트 블라우스는 신부랑 겹쳐요! 베이지나 톤다운 컬러 추천 💄',
+        likes: 31,
+        liked: false,
+      },
+    ],
   },
 ];
 
@@ -83,10 +143,10 @@ const RANKING = [
   { rank: 5, name: '컬러닥터', point: 5870, badge: '5', tier: '퍼스널컬러 박사' },
 ];
 
-/* ------------------------------------------------------------------ */
-/* 긴급도 배지 스타일                                                   */
-/* ------------------------------------------------------------------ */
+/* 필터 버튼 목록 */
+const FILTERS = ['전체', '소개팅', '첫출근', '결혼식'];
 
+/* 긴급도 배지 스타일 */
 const URGENCY_STYLE: Record<Feed['urgency'], string> = {
   critical:
     'bg-gradient-to-r from-rose-500 to-red-500 text-white shadow-rose-500/40 animate-pulse',
@@ -95,11 +155,221 @@ const URGENCY_STYLE: Record<Feed['urgency'], string> = {
   normal: 'bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white shadow-fuchsia-500/40',
 };
 
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
+/* 피드 카드 (카드별 댓글 State를 독립적으로 보유)                       */
+/* ================================================================== */
+
+function FeedCard({ feed }: { feed: Feed }) {
+  const [comments, setComments] = useState<Comment[]>(feed.comments);
+  const [input, setInput] = useState('');
+  const [open, setOpen] = useState(false); // 댓글 패널 열림 여부
+
+  /* ① 댓글 추가 */
+  const addComment = () => {
+    const text = input.trim();
+    if (!text) return;
+    setComments((prev) => [
+      ...prev,
+      {
+        id: prev.length ? prev[prev.length - 1].id + 1 : 1,
+        user: CURRENT_USER.name,
+        text,
+        likes: 0,
+        liked: false,
+      },
+    ]);
+    setInput('');
+  };
+
+  /* ② 댓글 좋아요 토글 */
+  const toggleLike = (commentId: number) => {
+    setComments((prev) =>
+      prev.map((c) =>
+        c.id === commentId
+          ? { ...c, liked: !c.liked, likes: c.likes + (c.liked ? -1 : 1) }
+          : c
+      )
+    );
+  };
+
+  return (
+    <article className="group overflow-hidden rounded-3xl bg-white shadow-lg shadow-slate-200/60 ring-1 ring-slate-100 transition hover:shadow-2xl hover:shadow-fuchsia-200/50">
+      {/* 카드 헤더 */}
+      <div className="flex items-center justify-between px-5 pt-4">
+        <div className="flex items-center gap-3">
+          <img
+            src={feed.avatar}
+            alt={feed.user}
+            className="h-10 w-10 rounded-full ring-2 ring-fuchsia-200 object-cover"
+          />
+          <div className="leading-tight">
+            <p className="text-sm font-bold">{feed.user}</p>
+            <p className="text-xs text-slate-400">{feed.handle}</p>
+          </div>
+        </div>
+
+        {/* TPO 긴급도 배지 */}
+        <span
+          className={`rounded-full px-3 py-1.5 text-xs font-extrabold shadow-lg ${URGENCY_STYLE[feed.urgency]}`}
+        >
+          {feed.tpo}
+        </span>
+      </div>
+
+      {/* 질문 텍스트 */}
+      <p className="px-5 pt-3 text-[15px] font-semibold text-slate-700">
+        “{feed.question}”
+      </p>
+
+      {/* 누끼 코디 이미지 */}
+      <div className="relative mt-4 mx-5 overflow-hidden rounded-2xl bg-gradient-to-b from-slate-50 via-white to-slate-100">
+        <img
+          src={feed.outfit}
+          alt="코디 착샷"
+          className="mx-auto h-96 w-auto max-w-full object-contain py-2 transition duration-500 group-hover:scale-105"
+        />
+        <span className="absolute left-3 top-3 rounded-full bg-black/50 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur">
+          📸 누끼 자동 처리됨
+        </span>
+      </div>
+
+      {/* 카드 푸터 */}
+      <div className="flex items-center justify-between px-5 py-4">
+        <div className="flex items-center gap-4 text-sm">
+          <span className="flex items-center gap-1.5 font-semibold text-fuchsia-600">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-fuchsia-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-fuchsia-500" />
+            </span>
+            <MessageCircleMore size={16} />
+            현재 {feed.advisors + comments.length - feed.comments.length}명의 오지랖퍼가 훈수 중
+          </span>
+          <span className="hidden sm:flex items-center gap-1 text-slate-400">
+            <Heart size={15} /> {feed.likes}
+          </span>
+        </div>
+
+        {/* ③ 훈수 두기 → 댓글 패널 토글 */}
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-bold shadow-lg transition hover:scale-105 active:scale-95 ${
+            open
+              ? 'bg-slate-100 text-slate-600 shadow-slate-200'
+              : 'bg-gradient-to-r from-fuchsia-600 to-rose-500 text-white shadow-fuchsia-500/30'
+          }`}
+        >
+          <Hand size={16} />
+          {open ? '닫기' : '나도 훈수 두기'}
+        </button>
+      </div>
+
+      {/* ===== 댓글 패널 ===== */}
+      {open && (
+        <div className="border-t border-slate-100 bg-slate-50/60 px-5 py-4">
+          {/* 댓글 입력창 */}
+          <div className="flex items-start gap-2">
+            <img
+              src={CURRENT_USER.avatar}
+              alt="나"
+              className="h-9 w-9 rounded-full ring-2 ring-violet-200 object-cover"
+            />
+            <div className="flex flex-1 items-end gap-2 rounded-2xl bg-white p-2 shadow-sm ring-1 ring-slate-200 focus-within:ring-fuchsia-300">
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    addComment();
+                  }
+                }}
+                rows={1}
+                placeholder="따뜻한 팩폭 한마디 남겨주세요... (쇼핑몰 링크 환영 🛍️)"
+                className="max-h-32 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none"
+              />
+              <button
+                onClick={addComment}
+                disabled={!input.trim()}
+                className="flex shrink-0 items-center gap-1 rounded-xl bg-gradient-to-r from-fuchsia-600 to-rose-500 px-3 py-2 text-sm font-bold text-white shadow transition hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
+              >
+                <Send size={14} />
+                훈수 두기
+              </button>
+            </div>
+          </div>
+
+          {/* 댓글 리스트 */}
+          <ul className="mt-4 space-y-3">
+            {comments.length === 0 && (
+              <li className="py-4 text-center text-sm text-slate-400">
+                아직 훈수가 없어요. 첫 오지랖의 주인공이 되어보세요! 👀
+              </li>
+            )}
+            {comments.map((c) => {
+              const isMine = c.user === CURRENT_USER.name;
+              return (
+                <li key={c.id} className="flex items-start gap-2.5">
+                  <div
+                    className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-bold ${
+                      isMine
+                        ? 'bg-violet-100 text-violet-600'
+                        : 'bg-fuchsia-100 text-fuchsia-600'
+                    }`}
+                  >
+                    {c.user.slice(0, 2)}
+                  </div>
+
+                  <div className="flex-1">
+                    <div className="inline-block rounded-2xl rounded-tl-sm bg-white px-3 py-2 shadow-sm ring-1 ring-slate-100">
+                      <p className="text-xs font-bold text-slate-800">
+                        {c.user}
+                        {isMine && (
+                          <span className="ml-1 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-600">
+                            나
+                          </span>
+                        )}
+                      </p>
+                      <p className="mt-0.5 text-sm text-slate-700">{c.text}</p>
+                    </div>
+
+                    {/* 좋아요(매의 눈 추천) 버튼 */}
+                    <button
+                      onClick={() => toggleLike(c.id)}
+                      className={`mt-1 ml-1 flex items-center gap-1 text-xs font-semibold transition ${
+                        c.liked
+                          ? 'text-fuchsia-600'
+                          : 'text-slate-400 hover:text-fuchsia-500'
+                      }`}
+                    >
+                      <Eye
+                        size={14}
+                        className={c.liked ? 'fill-fuchsia-200' : ''}
+                      />
+                      매의 눈 추천 {c.likes > 0 && c.likes}
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </article>
+  );
+}
+
+/* ================================================================== */
 /* 페이지                                                               */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
 
 export default function Home() {
+  const [filter, setFilter] = useState('전체');
+
+  const visibleFeeds =
+    filter === '전체'
+      ? FEEDS
+      : FEEDS.filter((f) => f.category === filter);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-rose-50 via-white to-violet-50 text-slate-900">
       {/* ===================== 상단 내비게이션 ===================== */}
@@ -139,7 +409,7 @@ export default function Home() {
               </div>
               <div className="leading-tight pr-1">
                 <p className="text-[11px] font-semibold opacity-90">
-                  압구정 매의 눈
+                  {CURRENT_USER.name}
                 </p>
                 <p className="flex items-center gap-1 text-xs font-bold">
                   <Coins size={12} className="text-amber-300" />
@@ -165,74 +435,41 @@ export default function Home() {
             </p>
           </div>
 
-          {/* 피드 카드 목록 */}
-          {FEEDS.map((feed) => (
-            <article
-              key={feed.id}
-              className="group overflow-hidden rounded-3xl bg-white shadow-lg shadow-slate-200/60 ring-1 ring-slate-100 transition hover:-translate-y-1 hover:shadow-2xl hover:shadow-fuchsia-200/50"
-            >
-              {/* 카드 헤더 */}
-              <div className="flex items-center justify-between px-5 pt-4">
-                <div className="flex items-center gap-3">
-                  <img
-                    src={feed.avatar}
-                    alt={feed.user}
-                    className="h-10 w-10 rounded-full ring-2 ring-fuchsia-200 object-cover"
-                  />
-                  <div className="leading-tight">
-                    <p className="text-sm font-bold">{feed.user}</p>
-                    <p className="text-xs text-slate-400">{feed.handle}</p>
-                  </div>
-                </div>
-
-                {/* TPO 긴급도 배지 */}
-                <span
-                  className={`rounded-full px-3 py-1.5 text-xs font-extrabold shadow-lg ${URGENCY_STYLE[feed.urgency]}`}
+          {/* ③ TPO 필터 버튼 */}
+          <div className="flex flex-wrap items-center gap-2">
+            {FILTERS.map((f) => {
+              const active = filter === f;
+              return (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={`flex items-center gap-1 rounded-full px-4 py-2 text-sm font-bold transition active:scale-95 ${
+                    active
+                      ? 'bg-gradient-to-r from-fuchsia-600 to-rose-500 text-white shadow-lg shadow-fuchsia-500/30'
+                      : 'bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50'
+                  }`}
                 >
-                  {feed.tpo}
-                </span>
-              </div>
-
-              {/* 질문 텍스트 */}
-              <p className="px-5 pt-3 text-[15px] font-semibold text-slate-700">
-                “{feed.question}”
-              </p>
-
-              {/* 누끼 코디 이미지 */}
-              <div className="relative mt-4 mx-5 overflow-hidden rounded-2xl bg-gradient-to-b from-slate-50 to-slate-100">
-                <img
-                  src={feed.outfit}
-                  alt="코디 착샷"
-                  className="mx-auto h-80 w-full object-cover transition duration-500 group-hover:scale-105"
-                />
-                <span className="absolute left-3 top-3 rounded-full bg-black/50 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur">
-                  📸 누끼 자동 처리됨
-                </span>
-              </div>
-
-              {/* 카드 푸터 */}
-              <div className="flex items-center justify-between px-5 py-4">
-                <div className="flex items-center gap-4 text-sm">
-                  <span className="flex items-center gap-1.5 font-semibold text-fuchsia-600">
-                    <span className="relative flex h-2 w-2">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-fuchsia-400 opacity-75" />
-                      <span className="relative inline-flex h-2 w-2 rounded-full bg-fuchsia-500" />
-                    </span>
-                    <MessageCircleMore size={16} />
-                    현재 {feed.advisors}명의 오지랖퍼가 훈수 중
-                  </span>
-                  <span className="hidden sm:flex items-center gap-1 text-slate-400">
-                    <Heart size={15} /> {feed.likes}
-                  </span>
-                </div>
-
-                <button className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-fuchsia-600 to-rose-500 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-fuchsia-500/30 transition hover:scale-105 active:scale-95">
-                  <Hand size={16} />
-                  나도 훈수 두기
+                  {f === '전체' && <ShoppingBag size={14} />}
+                  {f}
                 </button>
-              </div>
-            </article>
-          ))}
+              );
+            })}
+            <span className="ml-auto text-xs font-medium text-slate-400">
+              총 {visibleFeeds.length}개의 코디
+            </span>
+          </div>
+
+          {/* 피드 카드 목록 */}
+          {visibleFeeds.length === 0 ? (
+            <div className="rounded-3xl bg-white py-16 text-center text-slate-400 shadow-lg ring-1 ring-slate-100">
+              <p className="text-3xl">🧐</p>
+              <p className="mt-2 text-sm font-medium">
+                해당 TPO의 코디가 아직 없어요!
+              </p>
+            </div>
+          ) : (
+            visibleFeeds.map((feed) => <FeedCard key={feed.id} feed={feed} />)
+          )}
         </section>
 
         {/* --------------------- 우측 사이드바 --------------------- */}
