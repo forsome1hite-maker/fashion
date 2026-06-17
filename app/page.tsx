@@ -20,7 +20,6 @@ import {
   TrendingUp,
   Search,
   Bell,
-  Heart,
   Send,
   ShoppingBag,
   X,
@@ -30,6 +29,12 @@ import {
   History,
   Plus,
   Pin,
+  Youtube,
+  ThumbsUp,
+  Gift,
+  ShieldCheck,
+  Play,
+  Zap,
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -110,6 +115,60 @@ const URGENCY_STYLE: Record<Feed['urgency'], string> = {
     'bg-gradient-to-r from-amber-400 to-orange-500 text-white shadow-orange-500/40',
   normal: 'bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white shadow-fuchsia-500/40',
 };
+
+/* 문자열 → 안정적인 해시 (공감 투표 초기값을 게시글마다 고정) */
+function hashNum(s: string) {
+  let h = 0;
+  for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+/* ------------------------------------------------------------------ */
+/* 🚨 패션 심폐소생소 — 유튜브 패션 크리에이터 (데모 데이터)             */
+/*    ⚙️ 실제로는 YouTube Data API v3 (search.list) 연동 지점.          */
+/* ------------------------------------------------------------------ */
+
+const YOUTUBERS = [
+  {
+    channel: '핏더사이즈',
+    title: '키 작은 남자 비율 200% 살리는 코트 기장의 비밀',
+    views: '32만',
+    thumb: 'https://picsum.photos/seed/fitthesize/320/180',
+    link: 'https://www.youtube.com/results?search_query=핏더사이즈',
+  },
+  {
+    channel: '깡스타일리스트',
+    title: '소개팅 첫인상 합격하는 데일리룩 3가지',
+    views: '21만',
+    thumb: 'https://picsum.photos/seed/kkangstylist/320/180',
+    link: 'https://www.youtube.com/results?search_query=깡스타일리스트',
+  },
+  {
+    channel: '짱구대디',
+    title: '4060도 10살 어려보이는 어른 코디법',
+    views: '18만',
+    thumb: 'https://picsum.photos/seed/jjangu/320/180',
+    link: 'https://www.youtube.com/results?search_query=짱구대디',
+  },
+  {
+    channel: '보라끌레르',
+    title: '체형 커버 끝판왕! 가을 원피스 추천템',
+    views: '27만',
+    thumb: 'https://picsum.photos/seed/voraclaire/320/180',
+    link: 'https://www.youtube.com/results?search_query=보라끌레르',
+  },
+];
+
+/* ------------------------------------------------------------------ */
+/* 🛍️ 테러왕 탈출 치트키 — 쇼핑몰 바로가기 (어필리에이트 연동 지점)      */
+/* ------------------------------------------------------------------ */
+
+const MALLS = [
+  { name: '무신사', tag: '데일리', link: 'https://www.musinsa.com', style: 'from-slate-800 to-slate-900' },
+  { name: '29CM', tag: '감성', link: 'https://www.29cm.co.kr', style: 'from-neutral-700 to-black' },
+  { name: '지그재그', tag: '여성', link: 'https://zigzag.kr', style: 'from-pink-500 to-rose-500' },
+  { name: 'KREAM', tag: '한정판', link: 'https://kream.co.kr', style: 'from-emerald-500 to-teal-600' },
+];
 
 /* ================================================================== */
 /* 상품 검색 모달                                                       */
@@ -258,6 +317,10 @@ function FeedCard({ feed }: { feed: Feed }) {
   const [attached, setAttached] = useState<Product | null>(null); // 첨부된 상품
   const [targetSeq, setTargetSeq] = useState<number | null>(null); // 피드백 대상 버전 (null = 전체)
   const [sending, setSending] = useState(false); // 댓글 전송 중
+
+  /* 공감/추천 투표 ('이달의 테러왕' 집계용) */
+  const [votes, setVotes] = useState(() => 40 + (hashNum(feed.id) % 260));
+  const [voted, setVoted] = useState(false);
 
   /* 패션 변천사 (코디 버전들) */
   const [versions, setVersions] = useState<PostImage[]>(feed.versions);
@@ -461,6 +524,12 @@ function FeedCard({ feed }: { feed: Feed }) {
             {activeIndex + 1} / {versions.length}
           </span>
         )}
+
+        {/* AI 자동 모자이크/블러 엔진 — 초상권·법적 리스크 방어 표시 */}
+        <span className="absolute bottom-3 left-3 flex items-center gap-1 rounded-full bg-emerald-500/90 px-2.5 py-1 text-[11px] font-bold text-white shadow-lg backdrop-blur">
+          <ShieldCheck size={12} />
+          AI 마스킹 완료 · 얼굴·문신·번호판 자동 블러
+        </span>
       </div>
 
       {/* ===== 패션 변천사 타임라인 ===== */}
@@ -551,9 +620,22 @@ function FeedCard({ feed }: { feed: Feed }) {
             <MessageCircleMore size={16} />
             현재 {feed.advisors + comments.length - feed.comments.length}명의 오지랖퍼가 훈수 중
           </span>
-          <span className="hidden sm:flex items-center gap-1 text-slate-400">
-            <Heart size={15} /> {feed.likes}
-          </span>
+          {/* 공감/추천 투표 ('이달의 테러왕' 집계) */}
+          <button
+            onClick={() => {
+              setVoted((v) => !v);
+              setVotes((n) => n + (voted ? -1 : 1));
+            }}
+            className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold transition active:scale-95 ${
+              voted
+                ? 'bg-fuchsia-100 text-fuchsia-600 ring-1 ring-fuchsia-300'
+                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+            }`}
+            title="공감/추천 투표"
+          >
+            <ThumbsUp size={14} className={voted ? 'fill-fuchsia-300' : ''} />
+            공감 {votes.toLocaleString()}
+          </button>
         </div>
 
         {/* ③ 훈수 두기 → 댓글 패널 토글 */}
@@ -816,6 +898,26 @@ export default function Home() {
   const [filter, setFilter] = useState('전체');
   const [feeds, setFeeds] = useState<Feed[]>([]);
   const [loadingFeeds, setLoadingFeeds] = useState(true);
+  const [youtubers, setYoutubers] = useState(YOUTUBERS); // 심폐소생소 영상 (초기값=Mock)
+
+  /* 패션 심폐소생소 — YouTube Data API(서버)에서 최신 영상 로드 */
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch('/api/youtube');
+        const data = await res.json();
+        if (alive && Array.isArray(data?.videos) && data.videos.length > 0) {
+          setYoutubers(data.videos);
+        }
+      } catch {
+        /* 정적 폴백 유지 */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   /* 피드(게시글)를 DB(API)에서 로드 */
   useEffect(() => {
@@ -954,7 +1056,9 @@ export default function Home() {
               </Link>
             </div>
           ) : (
-            visibleFeeds.map((feed) => <FeedCard key={feed.id} feed={feed} />)
+            visibleFeeds.map((feed) => (
+              <FeedCard key={feed.id} feed={feed} />
+            ))
           )}
         </section>
 
@@ -1036,6 +1140,113 @@ export default function Home() {
                 <p className="text-[11px] text-slate-500">구원받은 코디</p>
               </div>
             </div>
+          </div>
+
+          {/* 🏆 이달의 테러왕 이벤트 (환골탈태 상품 지급) */}
+          <div className="overflow-hidden rounded-3xl bg-gradient-to-br from-rose-600 to-orange-500 p-5 text-white shadow-xl shadow-rose-500/20">
+            <h3 className="flex items-center gap-2 text-sm font-black">
+              <Gift size={16} className="text-amber-200" /> 이달의 테러왕 이벤트
+            </h3>
+            <p className="mt-2 text-xs leading-relaxed text-white/90">
+              공감 투표 1위 코디의 주인공에게{' '}
+              <b className="text-amber-200">무신사 쿠폰</b> 등 ‘환골탈태 상품’을
+              드려요!
+            </p>
+            <div className="mt-3 flex items-center justify-between rounded-2xl bg-white/15 px-3 py-2 backdrop-blur">
+              <span className="flex items-center gap-1 text-[11px] font-semibold text-white/90">
+                <Zap size={12} className="text-amber-200" /> 이번 달 마감까지
+              </span>
+              <span className="text-sm font-black">D-13</span>
+            </div>
+          </div>
+
+          {/* 🚨 패션 심폐소생소 — 패션 유튜버 최신 영상 */}
+          <div className="overflow-hidden rounded-3xl bg-white shadow-lg shadow-slate-200/60 ring-1 ring-slate-100">
+            <div className="flex items-center gap-2 bg-gradient-to-r from-red-500 to-rose-500 px-5 py-4 text-white">
+              <Youtube size={18} />
+              <div className="leading-tight">
+                <h3 className="text-base font-black">🚨 패션 심폐소생소</h3>
+                <p className="text-[11px] font-medium text-white/90">
+                  눈 정화 타임 · 패션 유튜버 최신 영상
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 p-3">
+              {youtubers.map((v) => (
+                <a
+                  key={v.link}
+                  href={v.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group/yt overflow-hidden rounded-2xl ring-1 ring-slate-100 transition hover:ring-rose-300"
+                >
+                  <div className="relative">
+                    <img
+                      src={v.thumb}
+                      alt={v.title}
+                      className="aspect-video w-full bg-slate-100 object-cover transition group-hover/yt:brightness-90"
+                    />
+                    <span className="absolute inset-0 grid place-items-center">
+                      <span className="grid h-8 w-8 place-items-center rounded-full bg-black/55 text-white backdrop-blur transition group-hover/yt:scale-110">
+                        <Play size={14} className="ml-0.5 fill-white" />
+                      </span>
+                    </span>
+                    {v.views && (
+                      <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1 py-0.5 text-[9px] font-bold text-white">
+                        조회 {v.views}
+                      </span>
+                    )}
+                  </div>
+                  <div className="p-2">
+                    <p className="line-clamp-2 text-[11px] font-bold leading-tight text-slate-700">
+                      {v.title}
+                    </p>
+                    <p className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-rose-500">
+                      <Youtube size={10} /> {v.channel}
+                    </p>
+                  </div>
+                </a>
+              ))}
+            </div>
+          </div>
+
+          {/* 🛍️ 테러왕 탈출 치트키 — 쇼핑몰 바로가기 */}
+          <div className="overflow-hidden rounded-3xl bg-white shadow-lg shadow-slate-200/60 ring-1 ring-slate-100">
+            <div className="flex items-center gap-2 bg-gradient-to-r from-violet-600 to-fuchsia-600 px-5 py-4 text-white">
+              <ShoppingBag size={18} />
+              <div className="leading-tight">
+                <h3 className="text-base font-black">🛍️ 테러왕 탈출 치트키</h3>
+                <p className="text-[11px] font-medium text-white/90">
+                  바로 쇼핑하고 환골탈태하기
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 p-3">
+              {MALLS.map((m) => (
+                <a
+                  key={m.name}
+                  href={m.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`flex flex-col gap-0.5 rounded-2xl bg-gradient-to-br ${m.style} p-3 text-white shadow-md transition hover:scale-[1.03] active:scale-95`}
+                >
+                  <span className="flex items-center justify-between">
+                    <span className="text-sm font-black tracking-tight">
+                      {m.name}
+                    </span>
+                    <ExternalLink size={13} className="opacity-70" />
+                  </span>
+                  <span className="text-[10px] font-medium text-white/80">
+                    #{m.tag}
+                  </span>
+                </a>
+              ))}
+            </div>
+            <p className="px-4 pb-3 text-center text-[10px] text-slate-400">
+              ⚙️ 향후 어필리에이트 제휴 링크 적용 예정
+            </p>
           </div>
         </aside>
       </main>
