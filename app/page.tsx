@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Flame,
   Eye,
@@ -21,7 +21,19 @@ import {
   Loader2,
   ExternalLink,
   Tag,
+  History,
+  Plus,
 } from 'lucide-react';
+
+/* 파일 → data URL 변환 (업로드용) */
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 /* ------------------------------------------------------------------ */
 /* 타입                                                                 */
@@ -45,12 +57,20 @@ type Comment = {
   product?: Product; // 첨부된 추천 상품
 };
 
+/* 코디 변천사 한 장 (post_images 1행에 대응) */
+type PostImage = {
+  sequence: number; // 버전 순서 (1=원본)
+  image: string;
+  label: string; // '원본' / 'ver.2' / '최종본'
+  bgRemoved: boolean; // 누끼 처리 여부
+};
+
 type Feed = {
   id: number;
   user: string;
   handle: string;
   avatar: string;
-  outfit: string;
+  versions: PostImage[]; // 글 1건당 여러 버전 (1:N)
   tpo: string;
   category: string; // 필터용 (소개팅/첫출근/결혼식)
   urgency: 'critical' | 'warning' | 'normal';
@@ -79,7 +99,9 @@ const FEEDS: Feed[] = [
     user: '소개팅뉴비',
     handle: '@blind_date_99',
     avatar: 'https://i.pravatar.cc/100?img=11',
-    outfit: '/pic/cho.png',
+    versions: [
+      { sequence: 1, image: '/pic/cho.png', label: '원본', bgRemoved: true },
+    ],
     tpo: '🚨 소개팅 D-1',
     category: '소개팅',
     urgency: 'critical',
@@ -108,7 +130,9 @@ const FEEDS: Feed[] = [
     user: '월요병환자',
     handle: '@new_comer',
     avatar: 'https://i.pravatar.cc/100?img=32',
-    outfit: '/pic/KCM.png',
+    versions: [
+      { sequence: 1, image: '/pic/KCM.png', label: '원본', bgRemoved: true },
+    ],
     tpo: '⚠️ 첫출근 긴급',
     category: '첫출근',
     urgency: 'warning',
@@ -130,7 +154,9 @@ const FEEDS: Feed[] = [
     user: '결혼식하객',
     handle: '@guest_look',
     avatar: 'https://i.pravatar.cc/100?img=45',
-    outfit: '/pic/woman1.png',
+    versions: [
+      { sequence: 1, image: '/pic/woman1.png', label: '원본', bgRemoved: true },
+    ],
     tpo: '💍 친구 결혼식 D-3',
     category: '결혼식',
     urgency: 'normal',
@@ -315,6 +341,49 @@ function FeedCard({ feed }: { feed: Feed }) {
   const [modalOpen, setModalOpen] = useState(false); // 상품 검색 모달
   const [attached, setAttached] = useState<Product | null>(null); // 첨부된 상품
 
+  /* 패션 변천사 (코디 버전들) */
+  const [versions, setVersions] = useState<PostImage[]>(feed.versions);
+  const [activeSeq, setActiveSeq] = useState<number>(
+    feed.versions[feed.versions.length - 1].sequence
+  );
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const active =
+    versions.find((v) => v.sequence === activeSeq) ?? versions[versions.length - 1];
+  const activeIndex = versions.findIndex((v) => v.sequence === active.sequence);
+
+  /* '새로운 코디 추가 업로드' → Remove.bg API 호출 → sequence 증가 저장 */
+  const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      const res = await fetch(`/api/posts/${feed.id}/images`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: dataUrl }),
+      });
+      const data = await res.json();
+      if (data?.image) {
+        const img: PostImage = {
+          sequence: data.image.sequence,
+          image: data.image.imageUrl,
+          label: data.image.label,
+          bgRemoved: data.image.bgRemoved,
+        };
+        setVersions((prev) => [...prev, img]);
+        setActiveSeq(img.sequence);
+      }
+    } catch {
+      /* 업로드 실패 무시 (프로토타입) */
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
   /* ① 댓글 추가 (첨부 상품 포함) */
   const addComment = () => {
     const text = input.trim();
@@ -374,16 +443,93 @@ function FeedCard({ feed }: { feed: Feed }) {
         “{feed.question}”
       </p>
 
-      {/* 누끼 코디 이미지 */}
+      {/* 누끼 코디 이미지 (현재 선택된 버전) */}
       <div className="relative mt-4 mx-5 overflow-hidden rounded-2xl bg-gradient-to-b from-slate-50 via-white to-slate-100">
         <img
-          src={feed.outfit}
-          alt="코디 착샷"
+          src={active.image}
+          alt={`코디 ${active.label}`}
           className="mx-auto h-96 w-auto max-w-full object-contain py-2 transition duration-500 group-hover:scale-105"
         />
-        <span className="absolute left-3 top-3 rounded-full bg-black/50 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur">
-          📸 누끼 자동 처리됨
+        <span className="absolute left-3 top-3 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-bold text-white backdrop-blur">
+          {active.label}
+          {active.bgRemoved && ' · 📸 누끼 처리됨'}
         </span>
+        {versions.length > 1 && (
+          <span className="absolute right-3 top-3 rounded-full bg-fuchsia-600/90 px-2.5 py-1 text-[11px] font-bold text-white">
+            {activeIndex + 1} / {versions.length}
+          </span>
+        )}
+      </div>
+
+      {/* ===== 패션 변천사 타임라인 ===== */}
+      <div className="mt-3 px-5">
+        <div className="flex items-center gap-1.5 text-xs font-black text-slate-600">
+          <History size={14} className="text-fuchsia-500" />
+          패션 변천사 타임라인
+          <span className="ml-1 text-[11px] font-medium text-slate-400">
+            코칭 받고 갈아입은 기록
+          </span>
+        </div>
+
+        <div className="mt-2 flex items-end gap-2 overflow-x-auto pb-1">
+          {versions.map((v, i) => (
+            <button
+              key={v.sequence}
+              onClick={() => setActiveSeq(v.sequence)}
+              className="group/th flex shrink-0 flex-col items-center gap-1"
+            >
+              <span
+                className={`text-[10px] font-bold ${
+                  v.sequence === activeSeq ? 'text-fuchsia-600' : 'text-slate-400'
+                }`}
+              >
+                {i + 1}단계
+              </span>
+              <div
+                className={`relative overflow-hidden rounded-xl ring-2 transition ${
+                  v.sequence === activeSeq
+                    ? 'ring-fuchsia-500'
+                    : 'ring-transparent hover:ring-fuchsia-200'
+                }`}
+              >
+                <img
+                  src={v.image}
+                  alt={v.label}
+                  className="h-20 w-16 bg-slate-100 object-cover"
+                />
+                <span className="absolute inset-x-0 bottom-0 truncate bg-black/55 px-1 py-0.5 text-center text-[10px] font-bold text-white">
+                  {v.label}
+                </span>
+              </div>
+            </button>
+          ))}
+
+          {/* 새로운 코디 추가 업로드 (작성자용) */}
+          <div className="flex shrink-0 flex-col items-center gap-1">
+            <span className="text-[10px] font-bold text-transparent">.</span>
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              className="flex h-20 w-16 flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-fuchsia-300 text-fuchsia-500 transition hover:bg-fuchsia-50 disabled:opacity-60"
+            >
+              {uploading ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : (
+                <Plus size={18} />
+              )}
+              <span className="whitespace-pre-line text-center text-[10px] font-bold leading-tight">
+                {uploading ? '누끼\n처리중' : '새 코디\n추가'}
+              </span>
+            </button>
+          </div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={onUpload}
+          />
+        </div>
       </div>
 
       {/* 카드 푸터 */}
